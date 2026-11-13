@@ -1,0 +1,372 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Besties - Truth or Dare</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg,#fbcfe8,#ddd6fe);
+  color: #392052;
+  text-align: center;
+  min-height: 100vh;
+  padding: 25px;
+}
+
+.container {
+  max-width: 650px;
+  margin: 35px auto;
+  padding: 30px;
+  background: white;
+  border-radius: 25px;
+  box-shadow: 0 10px 35px #0002;
+}
+
+h1 {
+  color: #9333ea;
+  font-size: 38px;
+}
+
+input {
+  width: 90%;
+  padding: 13px;
+  margin: 10px;
+  border: 2px solid #e9d5ff;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+button {
+  padding: 13px 22px;
+  margin: 8px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.create {
+  background: #9333ea;
+  color: white;
+}
+
+.join {
+  background: #ec4899;
+  color: white;
+}
+
+.truth {
+  background: #8b5cf6;
+  color: white;
+}
+
+.dare {
+  background: #ec4899;
+  color: white;
+}
+
+.next {
+  background: #16a34a;
+  color: white;
+}
+
+#game {
+  display: none;
+}
+
+.question {
+  background: #f5eaff;
+  padding: 25px;
+  border-radius: 18px;
+  margin: 20px 0;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+#players {
+  color: #9333ea;
+  font-weight: bold;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>💗 BESTIES 💗</h1>
+<h2>TRUTH OR DARE</h2>
+<p>Play with your friends online!</p>
+
+<div id="setup">
+
+<h3>Create a Game</h3>
+
+<input id="name" placeholder="Enter your nickname">
+
+<button class="create" onclick="createRoom()">
+Create Room
+</button>
+
+<hr>
+
+<h3>Join a Game</h3>
+
+<input id="code" placeholder="Enter Room Code">
+
+<button class="join" onclick="joinRoom()">
+Join Room
+</button>
+
+</div>
+
+<div id="game">
+
+<h2>Room Code: <span id="roomCode"></span></h2>
+
+<button onclick="copyCode()">Copy Room Code</button>
+
+<h3>Players</h3>
+<p id="players"></p>
+
+<div class="question">
+<p id="turn">Waiting for players...</p>
+<p id="question">Get ready!</p>
+</div>
+
+<div id="choices">
+<button class="truth" onclick="choose('Truth')">
+💜 TRUTH
+</button>
+
+<button class="dare" onclick="choose('Dare')">
+💗 DARE
+</button>
+</div>
+
+<button class="next" onclick="nextTurn()">
+Next Player →
+</button>
+
+</div>
+
+<p id="message"></p>
+
+</div>
+
+<script type="module">
+
+import { initializeApp }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
+import { getDatabase, ref, set, get, update, onValue }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+import { getAuth, signInAnonymously }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+
+// REPLACE WITH YOUR FIREBASE CONFIGURATION
+
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  databaseURL: "YOUR_DATABASE_URL",
+  projectId: "YOUR_PROJECT_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+
+let uid = null;
+let room = null;
+let roomData = null;
+let stopListening = null;
+
+const truths = [
+  "Who is your funniest friend?",
+  "What is your most embarrassing moment?",
+  "Have you ever lied to your best friend?",
+  "What is your biggest fear?",
+  "Who makes you laugh the most?",
+  "What is your funniest childhood memory?",
+  "What is your secret talent?",
+  "What is the silliest thing you have done?",
+  "Who would you take on a dream holiday?",
+  "What makes you happiest?"
+];
+
+const dares = [
+  "Dance for 15 seconds!",
+  "Sing your favourite song!",
+  "Make a funny face!",
+  "Speak like a robot for one minute!",
+  "Tell everyone a funny joke!",
+  "Do your best celebrity impression!",
+  "Talk without smiling for 30 seconds!",
+  "Give everyone a compliment!",
+  "Make up a funny nickname for yourself!",
+  "Act like a news reporter!"
+];
+
+signInAnonymously(auth)
+.then(result => {
+  uid = result.user.uid;
+})
+.catch(error => {
+  document.getElementById("message").textContent =
+    "Firebase error: " + error.message;
+});
+
+function randomCode() {
+  return Math.random().toString(36)
+    .substring(2,8).toUpperCase();
+}
+
+window.createRoom = async function() {
+
+  if (!uid) return alert("Please wait for connection.");
+
+  const name = document.getElementById("name").value.trim();
+
+  if (!name) return alert("Enter your name!");
+
+  let code = randomCode();
+
+  while ((await get(ref(db,"rooms/"+code))).exists()) {
+    code = randomCode();
+  }
+
+  await set(ref(db,"rooms/"+code), {
+    host: uid,
+    current: uid,
+    prompt: null,
+    players: {
+      [uid]: name
+    }
+  });
+
+  enterRoom(code);
+};
+
+window.joinRoom = async function() {
+
+  if (!uid) return alert("Please wait for connection.");
+
+  const name = document.getElementById("name").value.trim();
+  const code = document.getElementById("code").value.trim().toUpperCase();
+
+  if (!name || !code) return alert("Enter your name and room code!");
+
+  const roomRef = ref(db,"rooms/"+code);
+  const snapshot = await get(roomRef);
+
+  if (!snapshot.exists()) {
+    return alert("Room not found!");
+  }
+
+  await update(ref(db,"rooms/"+code+"/players"), {
+    [uid]: name
+  });
+
+  enterRoom(code);
+};
+
+function enterRoom(code) {
+
+  room = code;
+
+  document.getElementById("setup").style.display = "none";
+  document.getElementById("game").style.display = "block";
+  document.getElementById("roomCode").textContent = code;
+
+  if (stopListening) stopListening();
+
+  stopListening = onValue(ref(db,"rooms/"+code), snapshot => {
+
+    roomData = snapshot.val();
+
+    if (!roomData) return;
+
+    const players = roomData.players || {};
+
+    document.getElementById("players").textContent =
+      Object.values(players).join(" ❤️ ");
+
+    const currentName = players[roomData.current];
+
+    document.getElementById("turn").textContent =
+      currentName ? currentName + "'s turn!" : "Waiting...";
+
+    const myTurn = roomData.current === uid;
+
+    document.getElementById("choices").style.display =
+      myTurn && !roomData.prompt ? "block" : "none";
+
+    document.getElementById("question").textContent =
+      roomData.prompt || (myTurn
+        ? "Choose Truth or Dare!"
+        : "Waiting for your friend's choice...");
+
+  });
+}
+
+window.choose = async function(type) {
+
+  if (!roomData || roomData.current !== uid || roomData.prompt) {
+    return;
+  }
+
+  const list = type === "Truth" ? truths : dares;
+
+  const question = list[Math.floor(Math.random()*list.length)];
+
+  await update(ref(db,"rooms/"+room), {
+    prompt: type + ": " + question
+  });
+};
+
+window.nextTurn = async function() {
+
+  if (!roomData || roomData.host !== uid) {
+    return alert("Only the host can move to the next player!");
+  }
+
+  const ids = Object.keys(roomData.players || {});
+
+  if (!ids.length) return;
+
+  const index = ids.indexOf(roomData.current);
+  const next = ids[(index + 1) % ids.length];
+
+  await update(ref(db,"rooms/"+room), {
+    current: next,
+    prompt: null
+  });
+};
+
+window.copyCode = async function() {
+
+  try {
+    await navigator.clipboard.writeText(room);
+    alert("Room code copied! Share it with your friends.");
+  } catch {
+    alert("Your room code is: " + room);
+  }
+};
+
+</script>
+</body>
+</html>
